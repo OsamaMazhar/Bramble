@@ -65,5 +65,11 @@
   "features": {},
   "resolve_model_ids": "omit",
   "mode": "yolo",
-  "granularity": "coarse"
+  "granularity": "coarse",
+  "planning": {
+    "sub_repos": [
+      "bramble"
+    ],
+    "commit_docs": false
+  }
 }
