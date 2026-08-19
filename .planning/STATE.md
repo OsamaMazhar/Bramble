@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-02-PLAN.md
-last_updated: "2026-08-19T14:33:39.294Z"
+stopped_at: Completed 01-04-PLAN.md
+last_updated: "2026-08-19T14:49:09.647Z"
 last_activity: 2026-08-19
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 2
+  completed_plans: 4
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-08-18)
 ## Current Position
 
 Phase: 01 (build-baseline-and-install-gate) — EXECUTING
-Plan: 3 of 5
+Plan: 5 of 5
 Status: Ready to execute
 Last activity: 2026-08-19
 
-Progress: [████░░░░░░] 40%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -54,6 +54,8 @@ Progress: [████░░░░░░] 40%
 *Updated after each plan completion*
 | Phase 01 P1 | 10min | 2 tasks | 6 files |
 | Phase 01 P02 | 27min | 2 tasks | 12 files |
+| Phase 01 P3 | 20min | 2 tasks | 1 files |
+| Phase 01 P4 | 12min | 1 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -69,6 +71,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Pinned THEOS_SHA/THEOS_JAILED_SHA/YOUTUBEHEADER_SHA to real HEAD commits resolved via git ls-remote — Reproducibility pin (D-07) reflects actual repo state at execution time, not stale research-doc values
 - [Phase 01]: Corrected IOS_SDK_VERSION 17.5 -> 16.5 in bramble.config.example — theos/sdks does not host 17.5; 16.5 is the newest version it actually has, verified via its GitHub Contents API
 - [Phase 01]: bootstrap-toolchain.sh idempotency sentinel changed to $THEOS/makefiles/common.mk — the plan-cited $THEOS/bin/theos-set-variables.sh does not exist anywhere in current Theos (HEAD 5280bd0), which would have forced a full re-clone on every run
+- [Phase 01]: package.sh's toolchain-bootstrap sentinel set to $THEOS/makefiles/common.mk (not the plan-cited theos-set-variables.sh) -- carries forward Plan 01-02's established fix
+- [Phase 01]: package.sh never echoes INPUT_IPA_SOURCE's resolved value to console or manifest, extending T-01-07's non-disclosure rule beyond just the manifest file
+- [Phase 01]: Task 1 (D-12 synthetic version-bump proof) reported as expected block, not failure -- no real INPUT_IPA_SOURCE supplied yet (same operator dependency as Plan 01-03); procedure documented verbatim in SUMMARY for one-pass execution once input exists
+- [Phase 01]: No new permanent script committed for the synthetic-bump procedure -- plan objective states package.sh is the thing being tested; procedure recorded as copy-pasteable steps in the plan Summary instead
 
 ### Pending Todos
 
@@ -92,6 +98,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T14:33:39.272Z
-Stopped at: Completed 01-02-PLAN.md
+Last session: 2026-08-19T14:49:09.624Z
+Stopped at: Completed 01-04-PLAN.md
 Resume file: None

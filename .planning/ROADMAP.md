@@ -63,11 +63,11 @@ Plans:
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 01-03-PLAN.md — bramble/package.sh: input resolution, stock-input check, version stamping, build invocation, D-09 verification checks, manifest
+- [x] 01-03-PLAN.md — bramble/package.sh: input resolution, stock-input check, version stamping, build invocation, D-09 verification checks, manifest
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 01-04-PLAN.md — Synthetic version-bump proof (D-12) and bramble/README.md install doc
+- [x] 01-04-PLAN.md — Synthetic version-bump proof (D-12) and bramble/README.md install doc
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
@@ -209,7 +209,7 @@ Phases 3 and 4 both depend only on Phase 2 and are independent of each other —
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Build Baseline and Install Gate | 2/5 | In Progress|  |
+| 1. Build Baseline and Install Gate | 4/5 | In Progress|  |
 | 2. Hook Validation and the Download Gate | 0/TBD | Not started | - |
 | 3. The Four Ad Additions | 0/TBD | Not started | - |
 | 4. Download Foundation | 0/TBD | Not started | - |
