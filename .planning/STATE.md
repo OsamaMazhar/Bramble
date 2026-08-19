@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-08-19T14:04:41.090Z"
+stopped_at: Completed 01-02-PLAN.md
+last_updated: "2026-08-19T14:33:39.294Z"
 last_activity: 2026-08-19
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 1
+  completed_plans: 2
   percent: 0
 ---
 
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-08-18)
 ## Current Position
 
 Phase: 01 (build-baseline-and-install-gate) — EXECUTING
-Plan: 2 of 5
+Plan: 3 of 5
 Status: Ready to execute
 Last activity: 2026-08-19
 
-Progress: [██░░░░░░░░] 20%
+Progress: [████░░░░░░] 40%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [██░░░░░░░░] 20%
 
 *Updated after each plan completion*
 | Phase 01 P1 | 10min | 2 tasks | 6 files |
+| Phase 01 P02 | 27min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -66,6 +67,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Phases numbered 1–6; research/SUMMARY.md numbers the same phases 0–5 (roadmap Phase N = research Phase N−1)
 - [Phase 01]: Deleted bramble/control and bramble/YouTubeX.plist rather than updating them — No consumer in MODULES=jailed packaging pipeline
 - [Phase 01]: Pinned THEOS_SHA/THEOS_JAILED_SHA/YOUTUBEHEADER_SHA to real HEAD commits resolved via git ls-remote — Reproducibility pin (D-07) reflects actual repo state at execution time, not stale research-doc values
+- [Phase 01]: Corrected IOS_SDK_VERSION 17.5 -> 16.5 in bramble.config.example — theos/sdks does not host 17.5; 16.5 is the newest version it actually has, verified via its GitHub Contents API
+- [Phase 01]: bootstrap-toolchain.sh idempotency sentinel changed to $THEOS/makefiles/common.mk — the plan-cited $THEOS/bin/theos-set-variables.sh does not exist anywhere in current Theos (HEAD 5280bd0), which would have forced a full re-clone on every run
 
 ### Pending Todos
 
@@ -89,6 +92,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T14:04:41.067Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-08-19T14:33:39.272Z
+Stopped at: Completed 01-02-PLAN.md
 Resume file: None
