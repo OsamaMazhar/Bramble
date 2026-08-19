@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered
-last_updated: "2026-08-19T13:46:17.399Z"
-last_activity: 2026-08-19 -- Phase 1 planning complete
+stopped_at: Completed 01-01-PLAN.md
+last_updated: "2026-08-19T14:04:41.090Z"
+last_activity: 2026-08-19
 progress:
   total_phases: 6
   completed_phases: 0
   total_plans: 5
-  completed_plans: 0
+  completed_plans: 1
   percent: 0
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-08-18)
 
 **Core value:** Ad-free YouTube on my device, rebuildable against the next YouTube version with one command.
-**Current focus:** Phase 1 — Build Baseline and Install Gate
+**Current focus:** Phase 01 — build-baseline-and-install-gate
 
 ## Current Position
 
-Phase: 1 of 6 (Build Baseline and Install Gate)
-Plan: 0 of TBD in current phase
+Phase: 01 (build-baseline-and-install-gate) — EXECUTING
+Plan: 2 of 5
 Status: Ready to execute
-Last activity: 2026-08-19 -- Phase 1 planning complete
+Last activity: 2026-08-19
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [██░░░░░░░░] 20%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [░░░░░░░░░░] 0%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01 P1 | 10min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -63,6 +64,8 @@ Recent decisions affecting current work:
 - [Roadmap]: Research's Phase 6 (additive polish) dropped from v1 — every item in it is already listed as v2 in REQUIREMENTS.md and carries no REQ-ID
 - [Roadmap]: 6 phases against a `coarse` target of 3–5 — persistence/networking and mux/video wiring must not be merged, and the two gate phases cannot be absorbed into the work they gate
 - [Roadmap]: Phases numbered 1–6; research/SUMMARY.md numbers the same phases 0–5 (roadmap Phase N = research Phase N−1)
+- [Phase 01]: Deleted bramble/control and bramble/YouTubeX.plist rather than updating them — No consumer in MODULES=jailed packaging pipeline
+- [Phase 01]: Pinned THEOS_SHA/THEOS_JAILED_SHA/YOUTUBEHEADER_SHA to real HEAD commits resolved via git ls-remote — Reproducibility pin (D-07) reflects actual repo state at execution time, not stale research-doc values
 
 ### Pending Todos
 
@@ -86,6 +89,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-08-19T09:18:10.891Z
-Stopped at: Phase 1 context gathered
-Resume file: .planning/phases/01-build-baseline-and-install-gate/01-CONTEXT.md
+Last session: 2026-08-19T14:04:41.067Z
+Stopped at: Completed 01-01-PLAN.md
+Resume file: None

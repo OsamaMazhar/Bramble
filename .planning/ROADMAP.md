@@ -58,7 +58,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 Plans:
 **Wave 1**
 
-- [ ] 01-01-PLAN.md — Retarget Makefile to MODULES=jailed, add %ctor load line + INERT guard to Tweak.x, write bramble.config.example
+- [x] 01-01-PLAN.md — Retarget Makefile to MODULES=jailed, add %ctor load line + INERT guard to Tweak.x, write bramble.config.example
 - [ ] 01-02-PLAN.md — Vendor CydiaSubstrate.framework, write bootstrap-toolchain.sh (pinned Theos/theos-jailed/YouTubeHeader install)
 
 **Wave 2** *(blocked on Wave 1 completion)*
@@ -209,7 +209,7 @@ Phases 3 and 4 both depend only on Phase 2 and are independent of each other —
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Build Baseline and Install Gate | 0/5 | Planned | - |
+| 1. Build Baseline and Install Gate | 1/5 | In Progress|  |
 | 2. Hook Validation and the Download Gate | 0/TBD | Not started | - |
 | 3. The Four Ad Additions | 0/TBD | Not started | - |
 | 4. Download Foundation | 0/TBD | Not started | - |
