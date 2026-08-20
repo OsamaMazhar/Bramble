@@ -88,6 +88,32 @@ None yet.
 - [Phase 6] Codec ceiling only partly characterised — whether wanted resolutions are VP9/AV1-only is unmeasured, and if any tier serves HLS, AVFoundation offers no path to `.mp4`. De-risked by logging `mimeType` during Phase 2.
 - [Roadmap] No v1 requirement covers the surface that displays download state — scoped to the minimum inside Phase 5/6 criteria. See ROADMAP.md § Coverage Notes.
 
+### Blockers/Concerns (continued)
+
+- [Platform] **Signed-out playback is unreachable on a re-signed build. Not a bug — do not
+  re-investigate.** YouTube 21.x gates `/player` behind App Attest, whose keys derive from the
+  app's `application-identifier`. Any developer/Sideloadly signature rewrites that from
+  `EQHXZ8M8AV.com.google.ios.youtube` to the signer's team, so attestation fails and the
+  backend returns an error playability status (`PLAYBACK ERROR code=14`, server-authored
+  `YTIPlayerErrorMessageRenderer`). Search needs no attestation, which is why it keeps working
+  and made this look like a codec or packaging fault for several rounds.
+
+  Evidence, all first-hand on iPhone 15 Pro Max / iOS 26.6 (2026-08-20):
+  - Stock App Store YouTube plays signed-out → the target is reachable, but only with Google's
+    signature.
+  - Bramble with its dylib deleted fails identically → not caused by any hook.
+  - **YTKillerPlus 6.0 re-signed with our certificate fails identically** → no shipped tweak
+    solves it. YTK ships ad-hoc signed with *Google's* `application-identifier`, Google's
+    keychain groups and `group.com.google.YouTube`, and no `embedded.mobileprovision`: it is a
+    TrollStore/jailbreak artefact, not a sideload. On those devices the original identity
+    survives, so attestation succeeds. iOS 26.6 has neither.
+  - Client impersonation is not available as a workaround: `YTIClientInfo` is a shared
+    singleton (same pointer across successive `decorateContext:` calls), so rewriting
+    `clientName` for player requests rewrites it for every InnerTube request and breaks search
+    and thumbnails.
+
+  Consequence: sign-in is not merely a PROJECT.md requirement, it is the only functioning mode.
+
 ## Quick Tasks Completed
 
 | Date | Slug | Outcome |
