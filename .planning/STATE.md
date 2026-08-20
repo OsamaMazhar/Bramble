@@ -88,6 +88,12 @@ None yet.
 - [Phase 6] Codec ceiling only partly characterised — whether wanted resolutions are VP9/AV1-only is unmeasured, and if any tier serves HLS, AVFoundation offers no path to `.mp4`. De-risked by logging `mimeType` during Phase 2.
 - [Roadmap] No v1 requirement covers the surface that displays download state — scoped to the minimum inside Phase 5/6 criteria. See ROADMAP.md § Coverage Notes.
 
+## Quick Tasks Completed
+
+| Date | Slug | Outcome |
+|------|------|---------|
+| 2026-08-20 | bramble-settings-section | Bramble settings section in YouTube Settings + 4 toggles (ads, background playback, hold-for-2x on player and Shorts). bramble@8cd1c4e. Partial ADS-07. |
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
