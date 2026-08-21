@@ -119,6 +119,7 @@ None yet.
 | Date | Slug | Outcome |
 |------|------|---------|
 | 2026-08-20 | bramble-settings-section | Bramble settings section in YouTube Settings + 4 toggles (ads, background playback, hold-for-2x on player and Shorts). bramble@8cd1c4e. Partial ADS-07. |
+| 2026-08-21 | hide-playlist-next-minibar | Playlist/queue "Next" mini-bar hidden behind BrambleHidePlaylistNext. bramble@f1810dd. Builds clean; device check pending. |
 
 ## Deferred Items
 
