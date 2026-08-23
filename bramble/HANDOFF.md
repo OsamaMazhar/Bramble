@@ -3,7 +3,9 @@
 Everything needed to pick this up cold: what works, how to build and install it, how the
 hook points were found, and which paths are already proven dead.
 
-Written 2026-08-21. Target: **YouTube 21.32.4**, **iPhone 15 Pro Max**, **iOS 26.6**.
+Written 2026-08-21, updated 2026-08-23 (iPad watch-page investigation, rounds 1–10).
+Target: **YouTube 21.32.4**. Verified on **iPhone 15 Pro Max (iOS 26.6)**, iPhone XS,
+iPhone 13 Pro Max, and **iPad 5th gen (iPad6,11, iOS 16.7.16)**.
 
 ---
 
@@ -18,7 +20,7 @@ Settings (bottom of *Video and audio preferences*), backed by `NSUserDefaults`.
 | Background playback | `BrambleBackgroundPlayback` | Audio continues backgrounded | relaunch |
 | Disable hold for 2x speed | `BrambleNoSpeedmaster` | Player press-and-hold | immediate |
 | Disable hold for 2x in Shorts | `BrambleNoSpeedmasterShorts` | Shorts variant | relaunch (cold config) |
-| Hide suggested videos | `BrambleHideSuggested` | Related list + overlay panels | immediate |
+| Hide suggested videos | `BrambleHideSuggested` | Related list + overlay panels; iPad: forces compact single-column watch layout (no right column) | immediate |
 | Hide comments | `BrambleHideComments` | Comments section below the player | immediate |
 | Disable double tap to seek | `BrambleNoDoubleTapSeek` | Double-tap left/right on the player | immediate |
 | Hide the playlist Next bar | `BrambleHidePlaylistNext` | Playlist/queue mini-bar above the tab bar | immediate |
@@ -26,9 +28,12 @@ Settings (bottom of *Video and audio preferences*), backed by `NSUserDefaults`.
 | Hide Shorts | `BrambleHideShorts` | Shorts tab + shelves + cells | immediate |
 | Report an older app version | `BrambleSpoofVersion` | Client version → 20.21.6 | relaunch |
 
-**Every toggle defaults ON.** `bramblePref()` returns `YES` for an absent key — an absent key
-must never read as "feature off", or a fresh install behaves differently from the build
-before it.
+**Toggles default ON**, with one exception: `bramblePref()` returns `YES` for an absent key
+(an absent key must never read as "feature off", or a fresh install behaves differently from
+the build before it) — except **`BrambleHideComments`, which defaults OFF**. Reason: hide-
+comments ON combines with Hide suggested to mask the watch pane's native `visibleSections:5`
+to `0`, which wipes title/description/comments entirely. A hide-feature whose default breaks
+the page it hides things on is not shippable as a default.
 
 ### Why some toggles need a relaunch
 
@@ -100,7 +105,23 @@ Notes:
   `ioreg -rc IOUSBHostDevice -w 0 | grep "USB Serial Number"`, confirm with
   `xcrun xcdevice list`, then
   `ios-deploy --id <udid> --bundle build/signed/Payload/YouTube.app --no-wifi`.
-  Proven on Javeria's iPad (iPad 5th gen, iOS 16.7.16, UDID `f41584fd...`).
+  Proven on Javeria's iPad (iPad 5th gen, iOS 16.7.16, UDID
+  `f41584fde500f130ecf9539bbb8a507fa8dbf770`).
+- **iPad storage forces uninstall-first.** ~550 MB free vs a 314 MB app: installing over the
+  existing copy fails with `0xe8000051` ("Could not inspect the application package") —
+  identical error to a corrupt payload, but it's just disk space. Always
+  `ios-deploy --id <udid> --uninstall_only --bundle_id com.google.ios.youtube` first.
+  Note: uninstall takes **`--bundle_id`**, not `--bundle` (the latter errors with "you need
+  to pass in the bundle id").
+- **Never let ios-deploy launch the app on the iPad.** Its debugger-attached launch produces
+  `EXC_BREAKPOINT` (`lldb_image_notifier`) crash reports that look like a real crash — they
+  are artifacts of the debugger attach. Ask the user to open the app manually, or use
+  `--noinstall --bundle ... --justlaunch` (passing `--bundle` *without* `--noinstall`
+  triggers a reinstall).
+- **Probe log from the iPad:** `ios-deploy --id <udid> --bundle_id com.google.ios.youtube
+  --download=/Documents --to=/tmp/probe` then read
+  `/tmp/probe/Documents/bramble-probe.log`. Same plist read/write trick as below works with
+  `--download`/`--upload` instead of devicectl copy.
 - **`0xe8008015` at install = wrong provisioning profile embedded**, not a bad entitlement.
   `deploy.sh` used to pick a profile by grepping the whole plist for a `*` string, which
   matches unrelated fields and can select a single-app profile
@@ -212,7 +233,7 @@ Playlist "Next" mini-bar
        (TB,N,GisMiniBarVisible,V_miniBarVisible) read as a synthesised ivar setter.
 
 Hide suggested / related
-  -[YTWatchNextResultsViewController setVisibleSections:]   <- THE one that works
+  -[YTWatchNextResultsViewController setVisibleSections:]   <- THE one that works (iPhone)
        bitmask; bit 2 = related list, bit 0 = comments. Clear bit 2.
   -[YTFullscreenEngagementOverlayController setRelatedVideosVisible:]      %orig(NO)
   -[YTFullscreenEngagementOverlayController relatedVideosPeekingEnabled]   NO
@@ -220,6 +241,25 @@ Hide suggested / related
   -[YTRelatedVideosViewController setRelatedViewVisible:]                  %orig(NO)
   -[YTWatchStateController setRelatedVideosVisible:]                       %orig(NO)
   -[YTMainAppVideoPlayerOverlayViewController updateRelatedVideos]         skip
+  iPad (regular width): the mask is a no-op — the two-column layout bypasses it entirely.
+  Instead force the compact layout (see "iPad watch-page architecture" below):
+  -[YTWatchViewController isWideLayoutForWatchView:]              -> NO
+  -[YTWatchLayerViewController isWideWatchLayout]                 -> NO
+  -[YTSectionListDrawerView isWideMode]                           -> NO
+  -[YTSectionListDrawerViewController isWideModeWithWidth:]       -> NO
+
+Double tap to seek
+  -[YTDoubleTapToSeekController didDoubleTap:]                     skip when disabled
+
+Loop button (added to the player controls row)
+  -[YTMainAppVideoPlayerOverlayViewController layoutSubviews]      re-anchors the button:
+       pitch measured from the Cast button, anchor switches to autonavSwitch when it is
+       visible (checks superview/bounds/hidden/alpha — during fade-out .alpha already reads
+       the animation target, which is why the anchor check needs the controls-visible flag)
+  -[... setTopOverlayVisible:isAutonavCanceledState:] / setOverlayVisible:]
+       set an objc associated-object "controlsVisible" flag BEFORE %orig; layoutSubviews
+       returns early when controls are not visible, so the button doesn't slide onto the
+       autoplay toggle during fade-out
 
 Version spoof
   +[YTVersionUtils appVersion]   -> "20.21.6"
@@ -244,6 +284,53 @@ Sweeping the value on device (via the plist trick above), **not** inferred:
 
 So `sections & ~4` drops the related list and keeps comments. Masking rather than assigning a
 literal leaves other bits intact.
+
+### iPad watch-page architecture (10-round investigation, solved 2026-08-23)
+
+Everything below was established from on-device probe logs on the iPad (iOS 16.7.16), not
+inferred. The full round-by-round log is preserved as comments above the
+`YTWatchNextResultsViewController` / `YTWatchNextResponseViewController` hooks in `Tweak.x`
+— read that before touching any watch-page hook.
+
+**Instance model.** At least two `YTWatchNextResultsViewController` instances are live per
+video, and **they rotate roles**:
+
+- a stable *primary* (title/description/comments) whose `visibleSections` is `1` or `5`,
+- a per-video *secondary* whose `visibleSections` is always a hardcoded `0` (not a bitmask)
+  and which is fed a `YTISectionListRenderer` — this one populates the landscape right
+  column,
+- the same instance can carry `5` on one load and be demoted to `0` on the next —
+  `nativeZero` is a reliable *current-role* signal but NOT a stable instance identity.
+
+**Why the iPhone fix is a no-op on iPad.** `divideContentBetweenWatchNextAndDescription-
+Details_compact` vs `..._regular` (both real selectors on `YTWatchNextResponseViewController`)
+pick the layout by width. In the regular/two-column layout the secondary's `0` never carries
+the related bit, so clearing bit 2 masks nothing. The bitmask mask still matters — it hides
+below-video suggestions in portrait — but the column is a *layout* choice, not a sections
+choice.
+
+**What does NOT work (do not retry):**
+
+- Blocking `createWatchNextResultsViewControllerAllowingReuse:NO` or
+  `createDescriptionDetailsViewControllerAllowingReuse:` — some other factory path steps in
+  and populates the pane anyway (whack-a-mole, rounds 4–6).
+- Skipping `loadWithModel:` on nativeZero instances (round 9) — hides the suggestions but
+  (a) the description-details pane still renders a duplicate of title/likes/comments into
+  the column, and (b) it breaks portrait after a landscape stint: the instance that did
+  column duty keeps its loads skipped when it returns to below-video duty.
+- Forcing `shouldUseDescriptionDetailsViewController` / `shouldUseTeaserCarouselView-
+  Controller` to NO — this is what caused the "title/description render then get erased,
+  comments never show" regression. Both are plain probes now; never force them.
+
+**What works (round 10).** Hook the four `isWide` gates to NO under `BrambleHideSuggested`
+(hook list in section 4). The watch page then renders the compact single-column layout in
+landscape too — no column exists, content sits below the video in both orientations,
+rotation is stateless. No-ops on iPhone (already compact).
+
+**Misattribution warning.** Round 7 "broke the watch page" and was reverted on that
+conclusion — but the actual culprit shipped in the same build: `BrambleHideComments`
+defaulting ON, which masked the primary's native `5` to `0`. When a build carries more than
+one change and something breaks, bisect the *changes*, not the hypothesis.
 
 ---
 
@@ -315,6 +402,10 @@ The window may close entirely, which is why it's a toggle.
 | Filtering `_sectionRenderers` for related videos | Dropped 4 of 7 sections, **zero visual change** |
 | Matching `sectionIdentifier == "related-items"` | Only appears on the pagination path, not first render |
 | `com.apple.developer.coremedia.allow-alternate-video-decoder-selection` theory | Wrong: a decoder fault fails per-format; *every* video failed while search worked |
+| Masking bit 2 of `visibleSections` on iPad | No-op: the column instance is fed `0`, never a real bitmask |
+| Blocking the watch-next/description-details factory methods | Fallback paths create and populate the pane anyway |
+| Skipping `loadWithModel:` on `sections==0` instances | Column keeps a duplicate description pane; breaks portrait after rotation |
+| Forcing `shouldUse{DescriptionDetails,TeaserCarousel}ViewController` to NO | Erased title/description, comments never rendered |
 
 ---
 
@@ -365,3 +456,20 @@ The window may close entirely, which is why it's a toggle.
    `visibleSections`.
 5. **A null result is information.** Filtering that removes sections with no visual change means
    you are on the wrong lever — stop refining the match and find a different seam.
+6. **Bisect changes, not hypotheses.** Round 7 was reverted for a regression actually caused by
+   a different change shipped in the same build (see the misattribution warning in section 4).
+   When a build carries more than one change and something breaks, split the changes before
+   concluding anything about the mechanism.
+
+---
+
+## 9. Repo and release state (2026-08-23)
+
+- Sources live in git as of `d070bb1` (quark-wave branch) — before that `bramble/` was untracked.
+- Remote: `origin` = `https://github.com/OsamaMazhar/Bramble.git` (existing **public** fork of
+  PoomSmart/YouTube-X; tweak sources only — no IPA, no decrypted binaries, no `bramble.config`).
+- First release: branch **`release/v0.1.0`** and annotated tag **`v0.1.0`**, both at `d070bb1`.
+- Fresh-machine replication: `bootstrap-toolchain.sh` pins Theos / theos-jailed /
+  YouTubeHeader by SHA; `bramble.config.example` documents the operator-supplied decrypted
+  IPA; `package.sh` + `deploy.sh` carry build, sign, and per-device install (devicectl for
+  iOS 17+, ios-deploy for iOS 16 — see section 2).
