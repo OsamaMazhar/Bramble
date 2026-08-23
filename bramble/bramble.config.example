@@ -1,0 +1,44 @@
+# cp bramble.config.example bramble.config, then fill in INPUT_IPA_SOURCE.
+# bramble.config is gitignored; this file is not.
+
+# Local path or https:// URL to a decrypted stock YouTube IPA. Left empty by
+# design -- the project does not locate or bundle a source (PROJECT.md).
+INPUT_IPA_SOURCE=
+
+# Where a URL-sourced input is cached by version and reused on later runs
+# (relative to bramble/). Use --refetch to force a clean pull.
+INPUT_CACHE_DIR=.cache/input
+
+# Bramble's own version, independent of the YouTube version it targets.
+# Combined into Theos's PACKAGE_VERSION as <YOUTUBE_VERSION>-<BRAMBLE_VERSION>.
+BRAMBLE_VERSION=0.1.0
+
+# iOS SDK to compile against. Theos ships no SDKs; the bootstrap script
+# fetches this version from theos/sdks. 16.5 is the newest version theos/sdks
+# actually hosts as of 2026-08-19 (verified via its GitHub Contents API) --
+# 17.5 does not exist in that archive despite being STACK.md's original pick.
+IOS_SDK_VERSION=16.5
+
+# Pinned commit SHA for theos/theos (build system + Logos preprocessor).
+# --update-toolchain bumps this deliberately; the bootstrap script never
+# tracks master on its own.
+THEOS_SHA=5280bd038207e14f8bd76f5417aa2fe641c03228
+
+# Pinned commit SHA for qnblackcat/theos-jailed (MODULES=jailed IPA
+# repackaging -- --weak, --no-strip-codesig, REMOVE_EXTENSIONS support).
+THEOS_JAILED_SHA=662fd704aed27b8956bcfe52a35e2b676921ab42
+
+# Pinned commit SHA for PoomSmart/YouTubeHeader (~480 hand-maintained
+# reverse-engineered YouTube ObjC headers, cloned into $THEOS/include).
+YOUTUBEHEADER_SHA=62c24be3dfcaec60b7bda3868d84616b22e069e6
+
+# --- deploy.sh: signing and install -----------------------------------------------------
+# All optional. Left unset, deploy.sh resolves the first "Apple Development" identity and a
+# wildcard provisioning profile covering DEVICE_UDID. Set them to pin a specific one.
+
+# Device to install onto. `xcrun devicectl list devices` lists identifiers.
+DEVICE_ID=
+# The same device's hardware UDID, used to pick a provisioning profile that includes it.
+DEVICE_UDID=
+# SIGN_IDENTITY=Apple Development: Your Name (XXXXXXXXXX)
+# PROVISIONING_PROFILE=/absolute/path/to.mobileprovision
