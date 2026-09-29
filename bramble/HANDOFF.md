@@ -236,8 +236,7 @@ Hide suggested / related
   -[YTWatchNextResultsViewController setVisibleSections:]   <- THE one that works (iPhone)
        bitmask; bit 2 = related list, bit 0 = comments. Clear bit 2.
   -[YTFullscreenEngagementOverlayController setRelatedVideosVisible:]      %orig(NO)
-  -[YTFullscreenEngagementOverlayController relatedVideosPeekingEnabled]   NOT hooked -- forcing NO
-       drops the fullscreen bottom inset; the seek bar lands on the home indicator.
+  -[YTFullscreenEngagementOverlayController relatedVideosPeekingEnabled]   NO
   -[YTFullscreenEngagementOverlayView setRelatedVideosView:]               skip
   -[YTRelatedVideosViewController setRelatedViewVisible:]                  %orig(NO)
   -[YTWatchStateController setRelatedVideosVisible:]                       %orig(NO)

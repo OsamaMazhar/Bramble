@@ -934,10 +934,9 @@ static inline BOOL brambleForceCompactWatchLayout(void) {
     %orig(bramblePref(kBrambleHideSuggested) ? NO : visible);
 }
 
-// relatedVideosPeekingEnabled is deliberately left alone. Forcing it NO makes the fullscreen
-// layout drop the bottom band it reserves for the peek strip, and the seek bar then sits on
-// the home indicator. The strip still never appears: setRelatedVideosView: below keeps it
-// uninstalled and setRelatedVideosVisible: is forced NO.
+- (BOOL)relatedVideosPeekingEnabled {
+    return bramblePref(kBrambleHideSuggested) ? NO : %orig;
+}
 
 %end
 
