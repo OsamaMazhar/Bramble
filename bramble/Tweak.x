@@ -462,6 +462,22 @@ static YTIIcon *brambleSectionIcon(void) {
 // attestation mints player errors directly. Its category extends an out-of-image class, so
 // it cannot be named in a %hook; YTWatchFlowController is on the same failure path and is
 // concrete.
+// Fullscreen bar lift driver (see brambleUpdateFullscreenBar). Started from the first
+// didActivateVideo because main-queue work queued from %ctor never ran on device -- neither a
+// dispatch_async nor a rotation observer. Common modes so scrolling/tracking doesn't pause it.
+// ponytail: 1 s poll; drop it if the setFrame:/setCenter: hooks alone prove enough on device.
+static void brambleUpdateFullscreenBar(void);
+static void brambleStartBarTimer(void) {
+    static BOOL started;
+    if (started) return;
+    started = YES;
+    brambleProbe(@"bar timer armed, main=%d", NSThread.isMainThread);
+    NSTimer *timer = [NSTimer timerWithTimeInterval:1.0 repeats:YES block:^(__unused NSTimer *t) {
+        brambleUpdateFullscreenBar();
+    }];
+    [NSRunLoop.mainRunLoop addTimer:timer forMode:NSRunLoopCommonModes];
+}
+
 %group Diagnostics
 
 %hook YTWatchFlowController
@@ -500,6 +516,7 @@ static YTIIcon *brambleSectionIcon(void) {
 // Confirms how far playback actually gets before the refusal.
 - (void)playbackController:(id)controller didActivateVideo:(id)video withPlaybackData:(id)data {
     brambleProbe(@"didActivateVideo videoID=%@", [self currentVideoID]);
+    brambleStartBarTimer();
     %orig;
 }
 
@@ -934,9 +951,10 @@ static inline BOOL brambleForceCompactWatchLayout(void) {
     %orig(bramblePref(kBrambleHideSuggested) ? NO : visible);
 }
 
-- (BOOL)relatedVideosPeekingEnabled {
-    return bramblePref(kBrambleHideSuggested) ? NO : %orig;
-}
+// relatedVideosPeekingEnabled is deliberately left alone. Forcing it NO makes the fullscreen
+// layout drop the bottom band it reserves for the peek strip, and the seek bar then sits on
+// the home indicator. The strip still never appears: setRelatedVideosView: below keeps it
+// uninstalled and setRelatedVideosVisible: is forced NO.
 
 %end
 
@@ -1075,6 +1093,71 @@ static inline BOOL brambleForceCompactWatchLayout(void) {
 - (BOOL)isSingleLoopOn;
 - (void)addAutoplayLoopModeObserver:(id)observer;
 @end
+
+// Fullscreen seek bar vs the home indicator. In landscape on a Face ID iPhone the progress bar
+// sits in the bottom-edge swipe zone, so scrubbing opens the app switcher. 21.32.4's player is
+// the new node-based UI: none of YTInlinePlayerBarContainerView, YTMainAppControlsOverlayView
+// layout, or the overlay controller's playerBarBottomOffset / viewDidLayoutSubviews ever fire
+// (probed 2026-09-29), and a transform on the container is ignored. What works (device-checked
+// 2026-10-29): hook the container's setFrame:/setCenter: and place it higher whenever it lands
+// flush with the bottom in landscape; a 1 s timer re-sets its frame so the hooks run, and the
+// bottom-edge system gesture is deferred. Portrait and home-button devices (inset 0) are
+// untouched.
+
+static CGFloat brambleFullscreenBarLift(UIWindow *window) {
+    if (window == nil) return 0;
+    CGSize size = window.bounds.size;
+    if (size.width <= size.height) return 0;
+    // Clears the home-indicator swipe zone (landscape bottom inset is 20pt on Face ID iPhones)
+    // with a margin. ponytail: fixed margin, tune here if scrubbing still opens the switcher.
+    CGFloat inset = window.safeAreaInsets.bottom;
+    return inset > 0 ? inset + 10 : 0;
+}
+
+static void brambleCollectBottomBars(UIView *view, UIWindow *window, NSMutableArray<UIView *> *out) {
+    for (UIView *sub in view.subviews) {
+        // Probe 2026-10-29: the geometry match caught decoration layers and a keyboard host but
+        // never the visible bar. Target the bar container by class instead.
+        if ([sub isKindOfClass:%c(YTInlinePlayerBarContainerView)]) {
+            [out addObject:sub];
+            continue;
+        }
+        brambleCollectBottomBars(sub, window, out);
+    }
+}
+
+static void brambleUpdateFullscreenBar(void) {
+    // KVC rather than the deprecated -windows (a -Werror build) or connectedScenes, which found
+    // no windows on device.
+    NSArray<UIWindow *> *windows = [UIApplication.sharedApplication valueForKey:@"windows"];
+    static int ticks;
+    if (ticks < 3) { ticks++; brambleProbe(@"bar tick %d windows=%lu scenes=%lu", ticks,
+        (unsigned long)windows.count, (unsigned long)UIApplication.sharedApplication.connectedScenes.count); }
+    {
+      for (UIWindow *window in windows) {
+        if (window.hidden) continue;
+        CGFloat lift = brambleFullscreenBarLift(window);
+        static NSMutableDictionary<NSValue *, NSString *> *lastState;
+        if (lastState == nil) lastState = [NSMutableDictionary dictionary];
+        NSValue *key = [NSValue valueWithNonretainedObject:window];
+        NSString *state = [NSString stringWithFormat:@"%@ bounds=%@ safe=%@ root=%@ lift=%.1f",
+            NSStringFromClass(window.class), NSStringFromCGSize(window.bounds.size),
+            NSStringFromUIEdgeInsets(window.safeAreaInsets),
+            NSStringFromClass(window.rootViewController.class), lift];
+        BOOL changed = ![lastState[key] isEqualToString:state];
+        if (changed) { lastState[key] = state; brambleProbe(@"window %@", state); }
+        if (lift > 0) {
+            NSMutableArray<UIView *> *bars = [NSMutableArray array];
+            brambleCollectBottomBars(window, window, bars);
+            // A transform on the container is ignored on device (probe 2026-10-29: frame stayed
+            // at the bottom). Re-set the frame instead so the setFrame:/setCenter: hooks lift it.
+            for (UIView *v in bars) v.frame = v.frame;
+        }
+        for (UIViewController *vc = window.rootViewController; vc != nil; vc = vc.presentedViewController)
+            [vc setNeedsUpdateOfScreenEdgesDeferringSystemGestures];
+      }
+    }
+}
 
 static char kBrambleLoopButtonKey;
 static char kBrambleControlsVisibleKey;
@@ -1348,6 +1431,47 @@ static char kBrambleControlsVisibleKey;
 
 - (BOOL)shortsConsumptionClientGlobalConfigIosEnableShortsSpeedmasterGesture {
     return bramblePref(kBrambleNoSpeedmasterShorts) ? NO : %orig;
+}
+
+%end
+
+// The lift itself: whenever YouTube places the bar container flush with the bottom of its
+// superview in landscape, place it higher. Both entry points, since Auto Layout positions views
+// through setCenter: rather than setFrame:. Only a bottom-flush frame is shifted, so an
+// already-lifted frame is never lifted twice.
+@interface YTInlinePlayerBarContainerView : UIView
+@end
+
+%hook YTInlinePlayerBarContainerView
+
+- (void)setFrame:(CGRect)frame {
+    CGFloat lift = brambleFullscreenBarLift(self.window);
+    if (lift > 0 && self.superview != nil && CGRectGetMaxY(frame) >= self.superview.bounds.size.height - 1) {
+        static int logged;
+        if (logged++ < 5) brambleProbe(@"bar setFrame lift %@ by %.1f", NSStringFromCGRect(frame), lift);
+        frame.origin.y -= lift;
+    }
+    %orig(frame);
+}
+
+- (void)setCenter:(CGPoint)center {
+    CGFloat lift = brambleFullscreenBarLift(self.window);
+    if (lift > 0 && self.superview != nil
+        && center.y + self.bounds.size.height / 2 >= self.superview.bounds.size.height - 1) {
+        static int logged;
+        if (logged++ < 5) brambleProbe(@"bar setCenter lift %@ by %.1f", NSStringFromCGPoint(center), lift);
+        center.y -= lift;
+    }
+    %orig(center);
+}
+
+%end
+
+%hook UIViewController
+
+- (UIRectEdge)preferredScreenEdgesDeferringSystemGestures {
+    UIRectEdge edges = %orig;
+    return brambleFullscreenBarLift(self.viewIfLoaded.window) > 0 ? (edges | UIRectEdgeBottom) : edges;
 }
 
 %end
