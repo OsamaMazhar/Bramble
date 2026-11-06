@@ -44,6 +44,7 @@ static NSString *const kBrambleHideSuggested = @"BrambleHideSuggested";
 static NSString *const kBrambleHideComments = @"BrambleHideComments";
 static NSString *const kBrambleHidePlaylistNext = @"BrambleHidePlaylistNext";
 static NSString *const kBrambleLoopButton = @"BrambleLoopButton";
+static NSString *const kBrambleLockChannel = @"BrambleLockChannel";
 
 // PoToken enforcement is keyed off the client version the app reports. Older versions
 // predate it, so the backend does not demand a token a re-signed build cannot mint. This is
@@ -140,6 +141,8 @@ static NSArray <NSArray <NSString *> *> *brambleSettingsRows(void) {
           @"Removes the floating bar above the tab bar that announces the next video in a playlist or queue."],
         @[kBrambleLoopButton, @"Loop button on the player",
           @"Adds a repeat button to the player controls. It appears and hides with the rest of the controls."],
+        @[kBrambleLockChannel, @"Lock channel pages",
+          @"Hides the back button on a channel page. Tap the channel name five times in a row to bring it back for that page."],
         @[kBrambleHideShorts, @"Hide Shorts",
           @"Removes the Shorts tab and Shorts shelves, cells and history entries from every feed."],
         @[kBrambleSpoofVersion, @"Report an older app version",
@@ -1463,6 +1466,156 @@ static char kBrambleControlsVisibleKey;
         center.y -= lift;
     }
     %orig(center);
+}
+
+%end
+
+// Channel lock. Identifiers read off a 21.32.4 control dump: the back button lives in the
+// header half of a YTHeaderContentComboViewController, and the tab strip with this id appears
+// only on channel pages, so it is what marks a page as a channel. State is per page (stored on
+// the combo controller), so every newly opened channel starts locked.
+static NSString *const kBrambleBackButtonID = @"id.ui.browse.back.button";
+static const void *kBrambleChannelPageKey = &kBrambleChannelPageKey;
+static const void *kBrambleChannelUnlockedKey = &kBrambleChannelUnlockedKey;
+#define BRAMBLE_UNLOCK_TAPS 5
+#define BRAMBLE_UNLOCK_GAP 2.0
+
+static UIViewController *brambleComboController(UIView *view) {
+    for (UIResponder *r = view; r != nil; r = r.nextResponder)
+        if ([r isKindOfClass:%c(YTHeaderContentComboViewController)]) return (UIViewController *)r;
+    return nil;
+}
+
+static UIView *brambleFindView(UIView *root, NSString *identifier) {
+    if ([root.accessibilityIdentifier isEqualToString:identifier]) return root;
+    for (UIView *sub in root.subviews) {
+        UIView *found = brambleFindView(sub, identifier);
+        if (found != nil) return found;
+    }
+    return nil;
+}
+
+// Alpha, not hidden: YouTube reads the button's hidden state itself, and a back button that had
+// been hidden and then unhidden showed up but did nothing when tapped. A view at alpha 0 is also
+// skipped by hit-testing, so it cannot be tapped while locked.
+static void brambleApplyBackLock(UIView *button) {
+    if (button == nil) return;
+    UIViewController *combo = brambleComboController(button);
+    BOOL locked = bramblePref(kBrambleLockChannel) && objc_getAssociatedObject(combo, kBrambleChannelPageKey)
+        && !objc_getAssociatedObject(combo, kBrambleChannelUnlockedKey);
+    button.alpha = locked ? 0 : 1;
+}
+
+// The channel name: the first labelled view without an identifier inside the page header
+// (the avatar, subscribe button and tabs all carry identifiers; the name precedes the
+// description). Matched by element rather than geometry -- the iPad header puts the name
+// above the avatar's top edge, so "beside the avatar" missed it.
+static UIView *brambleChannelNameView(UIView *view) {
+    for (UIView *sub in view.subviews) {
+        if (sub.accessibilityLabel.length > 0 && sub.accessibilityIdentifier.length == 0) return sub;
+        UIView *found = brambleChannelNameView(sub);
+        if (found != nil) return found;
+    }
+    return nil;
+}
+
+// A transparent view over the whole page that claims only touches on the channel name (and the
+// @handle line under it), so YouTube never sees them -- on channels with a description it opens
+// the About sheet on the first tap, which covered the page and ate the rest. Every other point
+// falls through. BRAMBLE_UNLOCK_TAPS taps, each within BRAMBLE_UNLOCK_GAP seconds of the last,
+// unhide the back button and remove the overlay. An overlay rather than a gesture recognizer:
+// a recognizer that saw every touch broke the back button, and one that made YouTube's header
+// recognizers wait on it stopped receiving touches after two taps.
+@interface BrambleChannelUnlockView : UIView
+@end
+
+@implementation BrambleChannelUnlockView {
+    NSUInteger _taps;
+    NSDate *_lastTap;
+    UIView *_marker; // TEMPORARY: shows the tap area
+}
+
+- (CGRect)unlockArea {
+    UIView *header = brambleFindView(self.superview, @"id.elements.components.page_header");
+    UIView *name = header ? brambleChannelNameView(header) : nil;
+    if (name.window == nil) return CGRectNull;
+    CGRect area = [name convertRect:name.bounds toView:self];
+    area.origin.y -= 8;
+    area.size.height = area.size.height * 2 + 8; // name plus the @handle line below it
+    return area;
+}
+
+- (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
+    return CGRectContainsPoint([self unlockArea], point);
+}
+
+// TEMPORARY: a translucent red box tracking the tap area while the page scrolls.
+- (void)didMoveToSuperview {
+    if (self.superview == nil || _marker != nil) return;
+    _marker = [UIView new];
+    _marker.userInteractionEnabled = NO;
+    _marker.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.35];
+    [self addSubview:_marker];
+    __weak BrambleChannelUnlockView *weakSelf = self;
+    [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
+        BrambleChannelUnlockView *view = weakSelf;
+        if (view.superview == nil) { [timer invalidate]; return; }
+        [view.superview bringSubviewToFront:view];
+        CGRect area = [view unlockArea];
+        view->_marker.hidden = CGRectIsNull(area);
+        if (!CGRectIsNull(area)) view->_marker.frame = area;
+    }];
+}
+
+- (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
+    if (_lastTap == nil || -[_lastTap timeIntervalSinceNow] > BRAMBLE_UNLOCK_GAP) _taps = 0;
+    _lastTap = [NSDate date];
+    brambleProbe(@"unlock tap %lu", (unsigned long)_taps + 1); // TEMPORARY
+    if (++_taps < BRAMBLE_UNLOCK_TAPS) return;
+    UIView *page = self.superview;
+    objc_setAssociatedObject(brambleComboController(page), kBrambleChannelUnlockedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    brambleApplyBackLock(brambleFindView(page, kBrambleBackButtonID));
+    [[UIImpactFeedbackGenerator new] impactOccurred];
+    [self removeFromSuperview];
+}
+
+@end
+
+%hook YTQTMButton
+
+- (void)layoutSubviews {
+    UIView *view = (UIView *)self;
+    %orig;
+    if ([view.accessibilityIdentifier isEqualToString:kBrambleBackButtonID]) brambleApplyBackLock(view);
+}
+
+// TEMPORARY: does a tap reach the back button, and what is it wired to?
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
+    UIControl *control = (UIControl *)self;
+    if ([control.accessibilityIdentifier isEqualToString:kBrambleBackButtonID])
+        brambleProbe(@"back touch enabled=%d interaction=%d alpha=%.1f hidden=%d targets=%@", control.enabled,
+            control.userInteractionEnabled, control.alpha, control.hidden, control.allTargets);
+    %orig;
+}
+
+%end
+
+%hook YTTabScrollingView
+
+- (void)layoutSubviews {
+    UIView *view = (UIView *)self;
+    %orig;
+    if (![view.accessibilityIdentifier isEqualToString:@"id.ui.channel.tabs.scrollview"]) return;
+    UIViewController *combo = brambleComboController(view);
+    if (combo == nil || objc_getAssociatedObject(combo, kBrambleChannelPageKey)) return;
+    objc_setAssociatedObject(combo, kBrambleChannelPageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    brambleProbe(@"channel page marked combo=%p view=%@", combo, NSStringFromClass(combo.view.class)); // TEMPORARY
+    if (bramblePref(kBrambleLockChannel)) {
+        BrambleChannelUnlockView *overlay = [[BrambleChannelUnlockView alloc] initWithFrame:combo.view.bounds];
+        overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        [combo.view addSubview:overlay];
+    }
+    brambleApplyBackLock(brambleFindView(combo.view, kBrambleBackButtonID));
 }
 
 %end
