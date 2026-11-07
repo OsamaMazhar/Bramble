@@ -115,6 +115,9 @@ static BOOL bramblePref(NSString *key) {
     // is what "defaults ON" was supposed to guarantee for every row -- it just means NO here
     // instead of YES, since ON is the state that was never proven safe.
     if ([key isEqualToString:kBrambleHideComments]) return NO;
+    // Also an exception, by request: the channel lock is for the shared iPad, so it starts on
+    // there and off on iPhone. The switch overrides it either way.
+    if ([key isEqualToString:kBrambleLockChannel]) return UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad;
     return YES;
 }
 
@@ -142,7 +145,7 @@ static NSArray <NSArray <NSString *> *> *brambleSettingsRows(void) {
         @[kBrambleLoopButton, @"Loop button on the player",
           @"Adds a repeat button to the player controls. It appears and hides with the rest of the controls."],
         @[kBrambleLockChannel, @"Lock channel pages",
-          @"Hides the back button on a channel page. Tap the channel name five times in a row to bring it back for that page."],
+          @"Hides the back, search and more-actions buttons on a channel page. Tap the channel name five times in a row to bring them back for that page. Defaults on for iPad, off for iPhone."],
         @[kBrambleHideShorts, @"Hide Shorts",
           @"Removes the Shorts tab and Shorts shelves, cells and history entries from every feed."],
         @[kBrambleSpoofVersion, @"Report an older app version",
@@ -1470,10 +1473,11 @@ static char kBrambleControlsVisibleKey;
 
 %end
 
-// Channel lock. Identifiers read off a 21.32.4 control dump: the back button lives in the
-// header half of a YTHeaderContentComboViewController, and the tab strip with this id appears
-// only on channel pages, so it is what marks a page as a channel. State is per page (stored on
-// the combo controller), so every newly opened channel starts locked.
+// Channel lock. Identifiers read off a 21.32.4 control dump: the buttons live in the header half
+// of a YTHeaderContentComboViewController. A page counts as a channel when it has a
+// YTPageHeaderViewController showing a channel avatar -- the "id.ui.channel.tabs.scrollview"
+// tab strip alone is not enough, as iPad Home carries it too. State is per page (stored on the
+// combo controller), so every newly opened channel starts locked.
 static NSString *const kBrambleBackButtonID = @"id.ui.browse.back.button";
 static const void *kBrambleChannelPageKey = &kBrambleChannelPageKey;
 static const void *kBrambleChannelUnlockedKey = &kBrambleChannelUnlockedKey;
@@ -1495,6 +1499,27 @@ static UIView *brambleFindView(UIView *root, NSString *identifier) {
     return nil;
 }
 
+static BOOL brambleHasChannelHeader(UIViewController *vc) {
+    if ([vc isKindOfClass:%c(YTPageHeaderViewController)] && vc.isViewLoaded
+        && brambleFindView(vc.view, @"decorated-avatar-id") != nil) return YES;
+    for (UIViewController *child in vc.childViewControllers)
+        if (brambleHasChannelHeader(child)) return YES;
+    return NO;
+}
+
+// The header buttons that lock with the page: back, search, and the "More actions" overflow.
+// Search carries an identifier on iPad but none on iPhone, where it is the "Search" button
+// inside the right-hand navigation buttons.
+static BOOL brambleLockableButton(UIView *view) {
+    NSString *identifier = view.accessibilityIdentifier;
+    if ([identifier isEqualToString:kBrambleBackButtonID] || [identifier isEqualToString:@"id.settings.overflow.button"]
+        || [identifier isEqualToString:@"id.ui.navigation.search.button"]) return YES;
+    if (![view.accessibilityLabel isEqualToString:@"Search"]) return NO;
+    for (UIView *v = view.superview; v != nil; v = v.superview)
+        if ([v isKindOfClass:%c(YTRightNavigationButtons)]) return YES;
+    return NO;
+}
+
 // Alpha, not hidden: YouTube reads the button's hidden state itself, and a back button that had
 // been hidden and then unhidden showed up but did nothing when tapped. A view at alpha 0 is also
 // skipped by hit-testing, so it cannot be tapped while locked.
@@ -1504,6 +1529,11 @@ static void brambleApplyBackLock(UIView *button) {
     BOOL locked = bramblePref(kBrambleLockChannel) && objc_getAssociatedObject(combo, kBrambleChannelPageKey)
         && !objc_getAssociatedObject(combo, kBrambleChannelUnlockedKey);
     button.alpha = locked ? 0 : 1;
+}
+
+static void brambleApplyLockIn(UIView *root) {
+    if (brambleLockableButton(root)) brambleApplyBackLock(root);
+    for (UIView *sub in root.subviews) brambleApplyLockIn(sub);
 }
 
 // The channel name: the first labelled view without an identifier inside the page header
@@ -1532,7 +1562,6 @@ static UIView *brambleChannelNameView(UIView *view) {
 @implementation BrambleChannelUnlockView {
     NSUInteger _taps;
     NSDate *_lastTap;
-    UIView *_marker; // TEMPORARY: shows the tap area
 }
 
 - (CGRect)unlockArea {
@@ -1549,32 +1578,25 @@ static UIView *brambleChannelNameView(UIView *view) {
     return CGRectContainsPoint([self unlockArea], point);
 }
 
-// TEMPORARY: a translucent red box tracking the tap area while the page scrolls.
+// Keeps the overlay above whatever YouTube adds to the page later; stops once it is removed.
+// ponytail: polling at 0.5s; a hook on the page's addSubview: if this ever shows in a profile.
 - (void)didMoveToSuperview {
-    if (self.superview == nil || _marker != nil) return;
-    _marker = [UIView new];
-    _marker.userInteractionEnabled = NO;
-    _marker.backgroundColor = [UIColor.systemRedColor colorWithAlphaComponent:0.35];
-    [self addSubview:_marker];
+    if (self.superview == nil) return;
     __weak BrambleChannelUnlockView *weakSelf = self;
-    [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *timer) {
+    [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
         BrambleChannelUnlockView *view = weakSelf;
         if (view.superview == nil) { [timer invalidate]; return; }
         [view.superview bringSubviewToFront:view];
-        CGRect area = [view unlockArea];
-        view->_marker.hidden = CGRectIsNull(area);
-        if (!CGRectIsNull(area)) view->_marker.frame = area;
     }];
 }
 
 - (void)touchesEnded:(NSSet<UITouch *> *)touches withEvent:(UIEvent *)event {
     if (_lastTap == nil || -[_lastTap timeIntervalSinceNow] > BRAMBLE_UNLOCK_GAP) _taps = 0;
     _lastTap = [NSDate date];
-    brambleProbe(@"unlock tap %lu", (unsigned long)_taps + 1); // TEMPORARY
     if (++_taps < BRAMBLE_UNLOCK_TAPS) return;
     UIView *page = self.superview;
     objc_setAssociatedObject(brambleComboController(page), kBrambleChannelUnlockedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    brambleApplyBackLock(brambleFindView(page, kBrambleBackButtonID));
+    brambleApplyLockIn(page);
     [[UIImpactFeedbackGenerator new] impactOccurred];
     [self removeFromSuperview];
 }
@@ -1586,16 +1608,7 @@ static UIView *brambleChannelNameView(UIView *view) {
 - (void)layoutSubviews {
     UIView *view = (UIView *)self;
     %orig;
-    if ([view.accessibilityIdentifier isEqualToString:kBrambleBackButtonID]) brambleApplyBackLock(view);
-}
-
-// TEMPORARY: does a tap reach the back button, and what is it wired to?
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event {
-    UIControl *control = (UIControl *)self;
-    if ([control.accessibilityIdentifier isEqualToString:kBrambleBackButtonID])
-        brambleProbe(@"back touch enabled=%d interaction=%d alpha=%.1f hidden=%d targets=%@", control.enabled,
-            control.userInteractionEnabled, control.alpha, control.hidden, control.allTargets);
-    %orig;
+    if (brambleLockableButton(view)) brambleApplyBackLock(view);
 }
 
 %end
@@ -1607,15 +1620,14 @@ static UIView *brambleChannelNameView(UIView *view) {
     %orig;
     if (![view.accessibilityIdentifier isEqualToString:@"id.ui.channel.tabs.scrollview"]) return;
     UIViewController *combo = brambleComboController(view);
-    if (combo == nil || objc_getAssociatedObject(combo, kBrambleChannelPageKey)) return;
+    if (combo == nil || objc_getAssociatedObject(combo, kBrambleChannelPageKey) || !brambleHasChannelHeader(combo)) return;
     objc_setAssociatedObject(combo, kBrambleChannelPageKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    brambleProbe(@"channel page marked combo=%p view=%@", combo, NSStringFromClass(combo.view.class)); // TEMPORARY
     if (bramblePref(kBrambleLockChannel)) {
         BrambleChannelUnlockView *overlay = [[BrambleChannelUnlockView alloc] initWithFrame:combo.view.bounds];
         overlay.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
         [combo.view addSubview:overlay];
     }
-    brambleApplyBackLock(brambleFindView(combo.view, kBrambleBackButtonID));
+    brambleApplyLockIn(combo.view);
 }
 
 %end
